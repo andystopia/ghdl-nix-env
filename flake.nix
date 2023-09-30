@@ -34,6 +34,7 @@
 						pkgs.gtkwave # we want to be able to view the generated vcd files
 						pkgs.starship # I like a nice bash prompt
 						pkgs.just # A simple command runner
+						(pkgs.python39.withPackages(ps: with ps; [ tkinter ]))
 					];  # Add any additional development tools or dependencies here
 					shellHook = ''
 							# make the prompt pretty :)

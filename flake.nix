@@ -30,6 +30,7 @@
           buildInputs = [ 
 						packages.myghdl # use the GHDL that we just unpacked from the website
 						pkgs.llvmPackages_15.libllvm # `ghdl --version` says that it wants llvm 15.0.
+						pkgs.llvmPackages_15.libclang # maybe we need clang too
 						pkgs.gtkwave # we want to be able to view the generated vcd files
 						pkgs.starship # I like a nice bash prompt
 						pkgs.just # A simple command runner
@@ -38,6 +39,12 @@
 							# make the prompt pretty :)
 							eval "$(starship init bash)"
 
+							# for ~some~ reason a broken clang 11 seems to get installed
+							# too, we don't want this to lead the path, so let's just 
+							# stick with the same versino of clang as llvm.
+							export PATH="${pkgs.llvmPackages_15.libclang}/bin:$PATH"
+							# set the path for clang
+							export LIBCLANG_PATH="${pkgs.llvmPackages_15.libclang}/lib"
 							# make sure ghdl can find llvm
 							export DYLD_LIBRARY_PATH="$(llvm-config --libdir --link-shared)";
 					'';

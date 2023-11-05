@@ -1,12 +1,17 @@
 {
   description = "Download GHDL v3.0.0 MacOS11-llvm, collect deps, fix-up llvm path, and create a devshell";
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-23.05";
+    fenix = {
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    nixpkgs.url = "nixpkgs/nixos-unstable";
   };
 
   outputs = {
     self,
     nixpkgs,
+    fenix,
   }: let
     supportedSystems = ["x86_64-darwin" "aarch64-darwin"];
     forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
@@ -19,7 +24,11 @@
   in rec {
     packages = forAllSystems (system: let
       pkgs = pkgsFor.${system};
-    in {
+
+      legacyPkgs = nixpkgs.legacyPackages.${system};
+      toolchain = fenix.packages.${system}.minimal.toolchain;
+      # toolchain = fenixPkgs.default.toolchain;
+    in rec {
       # we download the ghdl package, and it should work
       # with just a couple inputs
       ghdl-llvm = pkgs.stdenvNoCC.mkDerivation {
@@ -49,6 +58,30 @@
           cp -R extract/ $out
         '';
       };
+
+      # include my ghdl based build tool
+      gb =
+        (legacyPkgs.makeRustPlatform {
+          cargo = toolchain;
+          rustc = toolchain;
+        })
+        .buildRustPackage rec {
+          nativeBuildInputs = with pkgs; [llvmPackages_15.bintools];
+          buildInputs = [ghdl-llvm];
+          pname = "gb";
+          version = "0.1.0";
+
+          src = pkgs.lib.cleanSource (pkgs.fetchFromGitHub {
+            owner = "andystopia";
+            repo = "gb";
+            rev = "e9f6ba61daf08e11f847cd31c61e658b0a395d72";
+            hash = "sha256-FJUEantrz4+6cWsSPy42no2ktXzs+yVKxiYt1Fh4rG4=";
+            fetchSubmodules = true;
+          });
+
+          cargoLock.lockFile = "${src}/Cargo.lock";
+          cargoLock.allowBuiltinFetchGit = true;
+        };
     });
 
     # This is the same devshell for x86 as well, so just change the arch
@@ -56,6 +89,7 @@
     devShells = forAllSystems (
       system: let
         pkgs = pkgsFor.${system};
+        customPkgs = packages.${system};
         # add our base set of dependencies here
         basePkgs = with pkgs;
           [
@@ -64,7 +98,7 @@
             (python39.withPackages (ps: with ps; [tkinter])) # python wants tkinter for vcd_movie
           ]
           ++ # and of course, we need to include our ghdl binary
-          [packages.${system}.ghdl-llvm];
+          [customPkgs.ghdl-llvm];
 
         # ghdl expects to have clang 15 at runtime
         stdenv = pkgs.llvmPackages_15.stdenv;
@@ -83,6 +117,22 @@
               starship # I like a nice bash prompt
               just # A simple command runner
             ]);
+
+          shellHook = ''
+            # make the prompt pretty :)
+            eval "$(starship init bash)"
+          '';
+        };
+
+        all = stdenv.mkDerivation {
+          name = "ghdl-devshell-all";
+          buildInputs =
+            basePkgs
+            ++ (with pkgs; [
+              starship # I like a nice bash prompt
+              just # A simple command runner
+            ])
+            ++ (with customPkgs; [gb]);
 
           shellHook = ''
             # make the prompt pretty :)
